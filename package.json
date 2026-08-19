@@ -1,7 +1,6 @@
 {
   "name": "dsh-geoserver",
   "version": "0.2.0",
-  "private": true,
   "type": "module",
   "description": "Read GeoServer WMS services and render map images in the dsh web GUI, with a configuration card in the settings page.",
   "keywords": [
@@ -42,7 +41,7 @@
     "build:host": "tsc -p tsconfig.json",
     "build:client": "tsc -p tsconfig.client.json --noEmit && tsdown",
     "test": "node --test tests/",
-    "prepublishOnly": "pnpm test && pnpm build"
+    "prepublishOnly": "node --test tests/"
   },
   "dsh": {
     "bundle": {
