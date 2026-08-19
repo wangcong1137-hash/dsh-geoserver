@@ -40,8 +40,8 @@
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.client.json --noEmit && tsdown",
     "build:host": "tsc -p tsconfig.json",
     "build:client": "tsc -p tsconfig.client.json --noEmit && tsdown",
-    "test": "node --test tests/",
-    "prepublishOnly": "node --test tests/"
+    "test": "node --test \"tests/*.test.mjs\"",
+    "prepublishOnly": "node --test \"tests/*.test.mjs\""
   },
   "dsh": {
     "bundle": {
