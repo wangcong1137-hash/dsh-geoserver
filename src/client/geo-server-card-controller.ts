@@ -14,7 +14,7 @@
 import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client'
 import type { SettingsScope, SettingsScopeSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  CardForm, textField,
+  CardForm, lineListField, positiveIntegerField, textField,
   type CardActions, type CardFieldState, type CardShell,
 } from './card-form.ts'
 
@@ -37,6 +37,28 @@ export interface GeoserverSettings {
   baseUrl?: string
   /** Basic-auth username; blank means anonymous access. */
   username?: string
+  /** Directories from which publication may read source files. */
+  publishRoots?: string[]
+  /** Default workspace used by publication requests that omit one. */
+  defaultWorkspace?: string
+  /** Maximum publication source-file size in bytes. */
+  publishMaxBytes?: number
+  /** Optional business-system webhook URL. */
+  webhookUrl?: string
+  /** Environment variable that supplies the webhook Bearer token. */
+  webhookTokenEnv?: string
+  /** Business webhook timeout in milliseconds. */
+  webhookTimeoutMs?: number
+}
+
+/** Layered settings response served by the plugin's configuration route. */
+interface GeoserverSettingsResponse {
+  /** Effective values rendered by the form. */
+  value: GeoserverSettings
+  /** Composition values restored by reset. */
+  base?: GeoserverSettings
+  /** Raw persisted overrides used for badges and save verification. */
+  user?: GeoserverSettings
 }
 
 /** What the credentials domain last reported for the password reference. */
@@ -55,6 +77,18 @@ export interface GeoserverCardState extends CardShell {
   baseUrl: CardFieldState
   /** Basic-auth username. */
   username: CardFieldState
+  /** Allowed publication source directories. */
+  publishRoots: CardFieldState
+  /** Default target workspace for publication. */
+  defaultWorkspace: CardFieldState
+  /** Maximum publication source-file size. */
+  publishMaxBytes: CardFieldState
+  /** Business webhook URL. */
+  webhookUrl: CardFieldState
+  /** Environment variable supplying the webhook token. */
+  webhookTokenEnv: CardFieldState
+  /** Business webhook timeout. */
+  webhookTimeoutMs: CardFieldState
   /** The staged password, which starts blank on every load. */
   password: CardFieldState
   /** Whether the Host reports a credential configured for the password reference. */
@@ -92,6 +126,10 @@ class RouteSettingsScope implements SettingsScope<GeoserverSettings> {
   }
   private readonly listeners = new Set<() => void>()
 
+  constructor() {
+    void this.reload()
+  }
+
   /** @returns the current sync snapshot (stable reference until the next change). */
   getSnapshot(): SettingsScopeSnapshot<GeoserverSettings> {
     return this.snapshot
@@ -109,7 +147,7 @@ class RouteSettingsScope implements SettingsScope<GeoserverSettings> {
 
   /**
    * Queue one field write through the route.
-   * @param field - scalar field inside the section.
+   * @param field - field inside the section.
    * @param value - JSON-shaped value selected by the user.
    */
   async set(field: string, value: unknown): Promise<void> {
@@ -119,7 +157,7 @@ class RouteSettingsScope implements SettingsScope<GeoserverSettings> {
   /**
    * Queue one field clear through the route, so the field re-inherits the
    * composition layer.
-   * @param field - scalar field inside the section.
+   * @param field - field inside the section.
    */
   async unset(field: string): Promise<void> {
     await this.post({ unset: [field] })
@@ -141,12 +179,12 @@ class RouteSettingsScope implements SettingsScope<GeoserverSettings> {
     try {
       const response = await fetch('/geoserver/config')
       if (!response.ok) throw new Error(`geoserver config read failed (${response.status})`)
-      const value = await response.json() as GeoserverSettings
+      const responseBody = await response.json() as GeoserverSettingsResponse
       this.snapshot = {
         status: 'ready',
-        value,
-        base: undefined,
-        user: value,
+        value: responseBody.value,
+        base: responseBody.base,
+        user: responseBody.user,
         revision: undefined,
         writable: true,
         mode: 'host',
@@ -178,7 +216,16 @@ export class GeoserverCardController {
   constructor(private readonly api: Pick<IApiClient, 'credentials'>) {
     this.form = new CardForm(
       new RouteSettingsScope(),
-      [textField('baseUrl'), textField('username')],
+      [
+        textField('baseUrl'),
+        textField('username'),
+        lineListField('publishRoots'),
+        textField('defaultWorkspace'),
+        positiveIntegerField('publishMaxBytes'),
+        textField('webhookUrl'),
+        textField('webhookTokenEnv'),
+        positiveIntegerField('webhookTimeoutMs'),
+      ],
       [{ field: PASSWORD_FIELD, write: text => this.writePassword(text) }],
     )
     this.store = this.form.bind(() => this.projection())
@@ -190,6 +237,12 @@ export class GeoserverCardController {
       ...this.form.shell(),
       baseUrl: this.form.field('baseUrl'),
       username: this.form.field('username'),
+      publishRoots: this.form.field('publishRoots'),
+      defaultWorkspace: this.form.field('defaultWorkspace'),
+      publishMaxBytes: this.form.field('publishMaxBytes'),
+      webhookUrl: this.form.field('webhookUrl'),
+      webhookTokenEnv: this.form.field('webhookTokenEnv'),
+      webhookTimeoutMs: this.form.field('webhookTimeoutMs'),
       password: this.form.field(PASSWORD_FIELD),
       passwordConfigured: this.credential.configured,
       passwordWritable: this.credential.writable,

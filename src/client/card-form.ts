@@ -129,6 +129,46 @@ export function numberField(field: string): CardFieldSpec {
 }
 
 /**
+ * A positive whole-number field. An empty draft clears the field; zero,
+ * fractions, negative values, and non-numeric drafts block the save.
+ * @param field - field name inside the namespace section.
+ * @returns the field's conversion spec.
+ */
+export function positiveIntegerField(field: string): CardFieldSpec {
+  return {
+    field,
+    format: value => typeof value === 'number' ? String(value) : '',
+    parse: (text) => {
+      const trimmed = text.trim()
+      if (trimmed === '') return { kind: 'clear' }
+      const parsed = Number(trimmed)
+      return Number.isSafeInteger(parsed) && parsed > 0
+        ? { kind: 'set', value: parsed }
+        : undefined
+    },
+  }
+}
+
+/**
+ * A string-list field rendered as one trimmed item per line. Blank lines are
+ * ignored, and an empty draft clears the field back to its default.
+ * @param field - field name inside the namespace section.
+ * @returns the field's conversion spec.
+ */
+export function lineListField(field: string): CardFieldSpec {
+  return {
+    field,
+    format: value => Array.isArray(value) && value.every(item => typeof item === 'string')
+      ? value.join('\n')
+      : '',
+    parse: (text) => {
+      const values = text.split(/\r?\n/u).map(value => value.trim()).filter(value => value.length > 0)
+      return values.length === 0 ? { kind: 'clear' } : { kind: 'set', value: values }
+    },
+  }
+}
+
+/**
  * A free-text field. An empty draft clears the field, so emptying the control
  * and saving is the same gesture as resetting it.
  * @param field - field name inside the namespace section.
@@ -307,7 +347,7 @@ export class CardForm<T> {
 
   private async store(field: string, value: unknown): Promise<boolean> {
     await this.scope.set(field, value)
-    return this.userLayer()?.[field] === value
+    return sameFieldValue(this.userLayer()?.[field], value)
   }
 
   private stage(field: string, edit: StagedEdit): void {
@@ -348,4 +388,10 @@ export class CardForm<T> {
   private publish(): void {
     for (const listener of this.listeners) listener()
   }
+}
+
+/** Compare the scalar and string-list values supported by plugin cards. */
+function sameFieldValue(actual: unknown, expected: unknown): boolean {
+  if (!Array.isArray(actual) || !Array.isArray(expected)) return actual === expected
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index])
 }

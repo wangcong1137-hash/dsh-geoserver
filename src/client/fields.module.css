@@ -98,6 +98,34 @@
   border-color: var(--dsw-alias-label-error);
 }
 
+.textarea {
+  min-height: 74px;
+  padding: 8px 12px;
+  resize: vertical;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-primary);
+}
+
+.textarea:focus-visible {
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.textarea:disabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: default;
+}
+
+.textareaInvalid {
+  composes: textarea;
+  border-color: var(--dsw-alias-label-error);
+}
+
 .invalid {
   margin: 0;
   font-size: 12px;

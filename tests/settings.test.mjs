@@ -20,7 +20,16 @@ test('geoserver settings section attaches and tracks committed updates', async (
   try {
     await provider
 
-    const Config = z.object({ baseUrl: z.string().required(), username: z.string() })
+    const Config = z.object({
+      baseUrl: z.string().required(),
+      username: z.string(),
+      publishRoots: z.array(z.string()).default([]),
+      defaultWorkspace: z.string().default(''),
+      publishMaxBytes: z.number().default(512 * 1024 * 1024),
+      webhookUrl: z.string(),
+      webhookTokenEnv: z.string(),
+      webhookTimeoutMs: z.number().default(5000),
+    })
     const ns = settingsNamespace('geoserver')
     const entry = { baseUrl: 'http://default:8080/geoserver' }
     let current = () => entry
@@ -35,11 +44,26 @@ test('geoserver settings section attaches and tracks committed updates', async (
     assert.equal(attached, true)
     assert.equal(current().baseUrl, 'http://default:8080/geoserver')
 
-    await ctx.settings.update(ns, { baseUrl: 'http://10.0.0.1:8651/geoserver', username: 'admin' })
+    await ctx.settings.update(ns, {
+      baseUrl: 'http://10.0.0.1:8651/geoserver',
+      username: 'admin',
+      publishRoots: ['D:/data', 'D:/imports'],
+      defaultWorkspace: 'demo',
+      publishMaxBytes: 1048576,
+      webhookUrl: 'https://business.example.com/geoserver/published',
+      webhookTokenEnv: 'BUSINESS_WEBHOOK_TOKEN',
+      webhookTimeoutMs: 3000,
+    })
     await new Promise(resolve => setTimeout(resolve, 300))
 
     assert.equal(current().baseUrl, 'http://10.0.0.1:8651/geoserver')
     assert.equal(current().username, 'admin')
+    assert.deepEqual(current().publishRoots, ['D:/data', 'D:/imports'])
+    assert.equal(current().defaultWorkspace, 'demo')
+    assert.equal(current().publishMaxBytes, 1048576)
+    assert.equal(current().webhookUrl, 'https://business.example.com/geoserver/published')
+    assert.equal(current().webhookTokenEnv, 'BUSINESS_WEBHOOK_TOKEN')
+    assert.equal(current().webhookTimeoutMs, 3000)
   } finally {
     await provider.dispose().catch(() => {})
     await rm(dir, { recursive: true, force: true })

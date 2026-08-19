@@ -8,6 +8,8 @@
  *  - `geoserver_map`: fetch a WMS GetMap image server-side (credentials never
  *    leave the host) and hand the browser an in-origin URL served by this
  *    plugin's `/geoserver-image` route.
+ *  - `geoserver_publish`: upload one local GeoTIFF or SHP ZIP, then optionally
+ *    notify an administrator-configured business webhook.
  *  - `geoserver_probe`: connectivity/authentication diagnostics.
  *
  * A settings card in the web GUI (Settings → Plugins → Plugin configuration)
@@ -42,6 +44,11 @@ import {
   parseRestList,
 } from './geoserver.js'
 import type { CapabilitiesResult, GetMapParams, WmsLayerInfo, WmsServiceInfo, WmsStyleInfo } from './geoserver.ts'
+import {
+  createPublicationEvent,
+  deliverPublicationWebhook,
+  publishLayerFile,
+} from './publishing.js'
 
 export const name = 'geoserver'
 export const inject = ['tools', 'webServer']
@@ -62,7 +69,7 @@ export interface ResolvedCredentials {
 
 /** Plugin configuration. */
 export interface Config {
-  /** GeoServer base URL, e.g. `http://host:8080/geoserver`. */
+  /** GeoServer base URL, or an empty string until the user configures one. */
   baseUrl: string
   /** Optional direct Basic-auth username. */
   username?: string
@@ -86,11 +93,23 @@ export interface Config {
   publicBaseUrl?: string
   /** Per-request HTTP timeout in milliseconds; default 15 seconds. */
   connectTimeoutMs?: number
+  /** Local directories from which `geoserver_publish` may read source files. Empty disables publication. */
+  publishRoots: string[]
+  /** Default workspace used when a publication request does not specify one. */
+  defaultWorkspace: string
+  /** Maximum source-file size accepted by `geoserver_publish`; default 512 MiB. */
+  publishMaxBytes: number
+  /** Optional business-system endpoint notified after a layer is published successfully. */
+  webhookUrl?: string
+  /** Optional environment variable supplying the webhook Bearer token. */
+  webhookTokenEnv?: string
+  /** Business webhook timeout in milliseconds; default 5 seconds. */
+  webhookTimeoutMs: number
 }
 
 /** Schemastery configuration for the geoserver consumer. */
 export const Config: z<Config> = z.object({
-  baseUrl: z.string().required(),
+  baseUrl: z.string().default(''),
   username: z.string(),
   password: z.string().role('secret'),
   env: z.array(z.string()),
@@ -98,7 +117,46 @@ export const Config: z<Config> = z.object({
   cacheMaxEntries: z.number(),
   publicBaseUrl: z.string(),
   connectTimeoutMs: z.number(),
+  publishRoots: z.array(z.string()).default([]),
+  defaultWorkspace: z.string().default(''),
+  publishMaxBytes: z.number().default(512 * 1024 * 1024),
+  webhookUrl: z.string(),
+  webhookTokenEnv: z.string(),
+  webhookTimeoutMs: z.number().default(5000),
 })
+
+/**
+ * Resolve the configured server address at tool-execution time.
+ * @param value - the tool override or current settings value.
+ * @returns the normalized non-empty GeoServer base URL.
+ */
+export function resolveBaseUrl(value: string | undefined): string {
+  const baseUrl = normalizeBaseUrl(value?.trim() ?? '')
+  if (baseUrl === '') {
+    throw new Error(
+      'GeoServer base URL is not configured. Open Settings → Plugins → Plugin configuration → GeoServer, '
+      + 'or set config.baseUrl on the geoserver profile entry.',
+    )
+  }
+  return baseUrl
+}
+
+/**
+ * Resolve the target workspace at publication time.
+ * @param requested - optional workspace supplied by the tool call.
+ * @param configured - default workspace from plugin settings.
+ * @returns the non-empty workspace name.
+ */
+export function resolvePublishWorkspace(requested: string | undefined, configured: string): string {
+  const workspace = (requested ?? configured).trim()
+  if (workspace === '') {
+    throw new Error(
+      'GeoServer publication workspace is not configured. Set Default publication workspace in the '
+      + 'GeoServer settings card, or pass workspace in this publication request.',
+    )
+  }
+  return workspace
+}
 
 /** Settings namespace carrying the configured server, username, and password. */
 export const GEOSERVER_SETTINGS_NAMESPACE = settingsNamespace('geoserver')
@@ -493,7 +551,7 @@ export async function fetchMapImage(
   }
 }
 
-/** Canonical value schema shared by the three tools' `output.schema`. */
+/** Canonical value schemas shared by the GeoServer tools. */
 const layerInfoSchema = {
   type: 'object',
   additionalProperties: false,
@@ -576,8 +634,52 @@ const probeResultSchema = {
   },
 } as const
 
+const publicationSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    workspace: { type: 'string' },
+    layer: { type: 'string' },
+    qualifiedName: { type: 'string' },
+    kind: { type: 'string', enum: ['raster', 'vector'] },
+    store: { type: 'string' },
+    sourceName: { type: 'string' },
+    createdWorkspace: { type: 'boolean' },
+    srs: { type: 'string' },
+    bbox: { type: 'array', items: { type: 'number' } },
+    serviceUrls: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        wms: { type: 'string' },
+        wfs: { type: 'string' },
+        wcs: { type: 'string' },
+      },
+    },
+  },
+} as const
+
+const publishResultSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    publication: publicationSchema,
+    metadata: { type: 'object', additionalProperties: true },
+    eventId: { type: 'string' },
+    notification: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        status: { type: 'string', enum: ['not_configured', 'delivered', 'failed'] },
+        httpStatus: { type: 'integer' },
+        error: { type: 'string' },
+      },
+    },
+  },
+} as const
+
 /**
- * Register the three geoserver tools plus the image route.
+ * Register the GeoServer tools plus the image and settings routes.
  * @param ctx - registrant context carrying the tool registry.
  * @param config - plugin configuration.
  */
@@ -593,10 +695,13 @@ export function apply(ctx: Context, config: Config): void {
   })
 
   // Basic auth for one call: config/env first, then the credentials domain the
-  // settings card writes the password into. The provider is optional — a
-  // deployment without a credential provider degrades to config/env.
-  const credentialStore = ctx.get('credentials') as CredentialProvider | undefined
-  const credentials = () => resolveRuntimeCredentials(current(), credentialStore)
+  // settings card writes the password into. Resolve the optional service on
+  // every operation so a provider mounted after this consumer, or remounted
+  // during composition updates, takes effect without restarting the plugin.
+  const credentials = () => resolveRuntimeCredentials(
+    current(),
+    ctx.get('credentials') as CredentialProvider | undefined,
+  )
   const cacheTtlMs = config.cacheTtlMs ?? 10 * 60 * 1000
   const cacheMaxEntries = config.cacheMaxEntries ?? 50
   const timeoutMs = config.connectTimeoutMs ?? 15_000
@@ -652,7 +757,22 @@ export function apply(ctx: Context, config: Config): void {
         void (async () => {
           if (req.method === 'GET') {
             const resolved = current()
-            sendJson(res, 200, { baseUrl: resolved.baseUrl, username: (await credentials()).username ?? '' })
+            const descriptor = sctx.settings.describe({ redactSecrets: true })
+              .find(item => item.ns === GEOSERVER_SETTINGS_NAMESPACE)
+            sendJson(res, 200, {
+              value: {
+                baseUrl: resolved.baseUrl,
+                username: (await credentials()).username ?? '',
+                publishRoots: resolved.publishRoots,
+                defaultWorkspace: resolved.defaultWorkspace,
+                publishMaxBytes: resolved.publishMaxBytes,
+                webhookUrl: resolved.webhookUrl ?? '',
+                webhookTokenEnv: resolved.webhookTokenEnv ?? '',
+                webhookTimeoutMs: resolved.webhookTimeoutMs,
+              },
+              ...(descriptor?.base === undefined ? {} : { base: descriptor.base }),
+              ...(descriptor?.user === undefined ? {} : { user: descriptor.user }),
+            })
             return
           }
           if (req.method !== 'POST') {
@@ -672,14 +792,25 @@ export function apply(ctx: Context, config: Config): void {
             return
           }
           const record = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>
-          const patch: Record<string, string> = {}
-          for (const key of ['baseUrl', 'username'] as const) {
+          const patch: Record<string, unknown> = {}
+          const stringFields = ['baseUrl', 'username', 'defaultWorkspace', 'webhookUrl', 'webhookTokenEnv'] as const
+          const numberFields = ['publishMaxBytes', 'webhookTimeoutMs'] as const
+          const supportedFields = new Set<string>([...stringFields, ...numberFields, 'publishRoots'])
+          for (const key of stringFields) {
             const value = record[key]
             if (typeof value === 'string') patch[key] = value
           }
+          for (const key of numberFields) {
+            const value = record[key]
+            if (typeof value === 'number') patch[key] = value
+          }
+          const publishRoots = record['publishRoots']
+          if (Array.isArray(publishRoots) && publishRoots.every(value => typeof value === 'string')) {
+            patch['publishRoots'] = publishRoots
+          }
           const unset = record['unset']
           const unsetFields = Array.isArray(unset)
-            ? unset.filter((key): key is string => typeof key === 'string')
+            ? unset.filter((key): key is string => typeof key === 'string' && supportedFields.has(key))
             : []
           if (Object.keys(patch).length > 0 || unsetFields.length > 0) {
             try {
@@ -727,7 +858,7 @@ export function apply(ctx: Context, config: Config): void {
       }],
     },
     async execute(args, exec) {
-      const baseUrl = normalizeBaseUrl(args.baseUrl ?? current().baseUrl)
+      const baseUrl = resolveBaseUrl(args.baseUrl ?? current().baseUrl)
       const skipDetails = args.skipDetails === true
       try {
         const result = await listServices(baseUrl, await credentials(), exec.signal, timeoutMs, skipDetails)
@@ -789,7 +920,7 @@ export function apply(ctx: Context, config: Config): void {
         : 'image/png'
       const layer = args.layer.trim()
       if (layer.length === 0) throw new Error('layer must be a non-empty string')
-      const baseUrl = normalizeBaseUrl(current().baseUrl)
+      const baseUrl = resolveBaseUrl(current().baseUrl)
 
       let bbox: readonly [number, number, number, number] | undefined =
         args.bbox !== undefined && args.bbox.length === 4 && args.bbox.every(Number.isFinite)
@@ -827,6 +958,107 @@ export function apply(ctx: Context, config: Config): void {
   }))
 
   ctx.tools.register(defineTool({
+    name: 'geoserver_publish',
+    description:
+      'Publish one local GeoTIFF (.tif/.tiff) or one ZIP containing a single SHP dataset to '
+      + 'GeoServer. The source file must be inside a configured publishRoots directory. Existing '
+      + 'layers are never replaced. After GeoServer confirms the layer, the tool optionally sends '
+      + 'the result and caller metadata to the administrator-configured business webhook.',
+    parameters: {
+      kind: {
+        type: 'string',
+        enum: ['raster', 'vector'],
+        required: true,
+        description: 'raster uploads a GeoTIFF; vector uploads a ZIP containing one SHP dataset.',
+      },
+      sourcePath: {
+        type: 'string',
+        required: true,
+        description: 'Absolute or workspace-relative source path inside config.publishRoots.',
+      },
+      workspace: {
+        type: 'string',
+        description: 'Target GeoServer workspace; defaults to the workspace configured in the settings card.',
+      },
+      layerName: {
+        type: 'string',
+        description: 'Layer name; defaults to the source filename without its extension. A vector ZIP must contain a same-named SHP dataset.',
+      },
+      storeName: { type: 'string', description: 'GeoServer store name; defaults to the layer name.' },
+      metadata: {
+        type: 'object',
+        additionalProperties: true,
+        description: 'Optional flat business identifiers forwarded unchanged to the configured webhook.',
+      },
+    },
+    output: {
+      schema: publishResultSchema,
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.publication === undefined
+          ? 'GeoServer publication returned no layer information.'
+          : `Published **${value.publication.qualifiedName ?? value.publication.layer ?? 'layer'}** as `
+            + `${value.publication.kind ?? 'unknown'} data. Business notification: `
+            + `${value.notification?.status ?? 'unknown'}.`,
+      }],
+    },
+    async execute(args, exec) {
+      const resolved = current()
+      const baseUrl = resolveBaseUrl(resolved.baseUrl)
+      const workspace = resolvePublishWorkspace(args.workspace, resolved.defaultWorkspace)
+      const result = await publishLayerFile(
+        baseUrl,
+        await credentials(),
+        {
+          kind: args.kind,
+          sourcePath: args.sourcePath,
+          workspace,
+          ...(args.layerName === undefined ? {} : { layerName: args.layerName }),
+          ...(args.storeName === undefined ? {} : { storeName: args.storeName }),
+          ...(args.metadata === undefined ? {} : { metadata: args.metadata }),
+        },
+        { allowedRoots: resolved.publishRoots, maxBytes: resolved.publishMaxBytes },
+        exec.signal,
+        timeoutMs,
+      )
+      const event = createPublicationEvent(result.publication, result.metadata)
+      const webhookToken = resolved.webhookTokenEnv === undefined
+        ? undefined
+        : process.env[resolved.webhookTokenEnv]
+      const notification = resolved.webhookTokenEnv !== undefined && webhookToken === undefined
+        ? {
+            status: 'failed' as const,
+            error: `webhook token environment variable ${resolved.webhookTokenEnv} is not set`,
+          }
+        : await deliverPublicationWebhook(
+            resolved.webhookUrl,
+            webhookToken,
+            event,
+            exec.signal,
+            resolved.webhookTimeoutMs,
+          )
+      const publication = result.publication
+      return {
+        publication: {
+          workspace: publication.workspace,
+          layer: publication.layer,
+          qualifiedName: publication.qualifiedName,
+          kind: publication.kind,
+          store: publication.store,
+          sourceName: publication.sourceName,
+          createdWorkspace: publication.createdWorkspace,
+          ...(publication.srs === undefined ? {} : { srs: publication.srs }),
+          ...(publication.bbox === undefined ? {} : { bbox: Array.from(publication.bbox) }),
+          serviceUrls: { ...publication.serviceUrls },
+        },
+        metadata: { ...result.metadata },
+        eventId: event.eventId,
+        notification,
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'geoserver_probe',
     description:
       'Diagnose GeoServer connectivity and authentication. Reports whether the server is '
@@ -841,7 +1073,7 @@ export function apply(ctx: Context, config: Config): void {
       render: (_args, value) => [{ type: 'text', text: renderProbe(value) }],
     },
     async execute(args, exec) {
-      const baseUrl = normalizeBaseUrl(args.baseUrl ?? current().baseUrl)
+      const baseUrl = resolveBaseUrl(args.baseUrl ?? current().baseUrl)
       const probe = await probeServer(baseUrl, await credentials(), exec.signal, timeoutMs, args.layer)
       return probe
     },

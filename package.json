@@ -27,6 +27,7 @@
   },
   "files": [
     "lib",
+    "examples",
     "src",
     "cordis.patch.yml",
     "tsdown.config.ts",
@@ -40,6 +41,7 @@
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.client.json --noEmit && tsdown",
     "build:host": "tsc -p tsconfig.json",
     "build:client": "tsc -p tsconfig.client.json --noEmit && tsdown",
+    "webhook:receiver": "node examples/webhook-receiver.mjs",
     "test": "node --test \"tests/*.test.mjs\"",
     "prepublishOnly": "node --test \"tests/*.test.mjs\""
   },

@@ -15,7 +15,35 @@ import {
   parseRestList,
   WMS_IMAGE_FORMATS,
 } from '../lib/geoserver.js'
-import { probeServer, resolveCredentials, listServices } from '../lib/index.js'
+import {
+  Config,
+  probeServer,
+  resolveBaseUrl,
+  resolveCredentials,
+  resolvePublishWorkspace,
+  listServices,
+} from '../lib/index.js'
+
+test('plugin config permits first boot before a server URL is configured', () => {
+  const config = Config({})
+  assert.equal(config.baseUrl, '')
+  assert.deepEqual(config.publishRoots, [])
+  assert.equal(config.defaultWorkspace, '')
+  assert.equal(config.publishMaxBytes, 512 * 1024 * 1024)
+  assert.equal(config.webhookTimeoutMs, 5000)
+})
+
+test('publication workspace uses the request before the configured default', () => {
+  assert.equal(resolvePublishWorkspace('request_workspace', 'default_workspace'), 'request_workspace')
+  assert.equal(resolvePublishWorkspace(undefined, ' default_workspace '), 'default_workspace')
+  assert.throws(() => resolvePublishWorkspace(undefined, ''), /workspace is not configured/)
+})
+
+test('resolveBaseUrl rejects an unconfigured server only when a tool executes', () => {
+  assert.throws(() => resolveBaseUrl(undefined), /GeoServer base URL is not configured/)
+  assert.throws(() => resolveBaseUrl('   '), /GeoServer base URL is not configured/)
+  assert.equal(resolveBaseUrl(' http://h:8080/geoserver/// '), 'http://h:8080/geoserver')
+})
 
 test('basicAuthHeader encodes user:pass', () => {
   assert.equal(basicAuthHeader('admin', 'geoserver'), `Basic ${Buffer.from('admin:geoserver').toString('base64')}`)

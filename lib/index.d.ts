@@ -8,6 +8,8 @@
  *  - `geoserver_map`: fetch a WMS GetMap image server-side (credentials never
  *    leave the host) and hand the browser an in-origin URL served by this
  *    plugin's `/geoserver-image` route.
+ *  - `geoserver_publish`: upload one local GeoTIFF or SHP ZIP, then optionally
+ *    notify an administrator-configured business webhook.
  *  - `geoserver_probe`: connectivity/authentication diagnostics.
  *
  * A settings card in the web GUI (Settings → Plugins → Plugin configuration)
@@ -41,7 +43,7 @@ export interface ResolvedCredentials {
 }
 /** Plugin configuration. */
 export interface Config {
-    /** GeoServer base URL, e.g. `http://host:8080/geoserver`. */
+    /** GeoServer base URL, or an empty string until the user configures one. */
     baseUrl: string;
     /** Optional direct Basic-auth username. */
     username?: string;
@@ -65,9 +67,34 @@ export interface Config {
     publicBaseUrl?: string;
     /** Per-request HTTP timeout in milliseconds; default 15 seconds. */
     connectTimeoutMs?: number;
+    /** Local directories from which `geoserver_publish` may read source files. Empty disables publication. */
+    publishRoots: string[];
+    /** Default workspace used when a publication request does not specify one. */
+    defaultWorkspace: string;
+    /** Maximum source-file size accepted by `geoserver_publish`; default 512 MiB. */
+    publishMaxBytes: number;
+    /** Optional business-system endpoint notified after a layer is published successfully. */
+    webhookUrl?: string;
+    /** Optional environment variable supplying the webhook Bearer token. */
+    webhookTokenEnv?: string;
+    /** Business webhook timeout in milliseconds; default 5 seconds. */
+    webhookTimeoutMs: number;
 }
 /** Schemastery configuration for the geoserver consumer. */
 export declare const Config: z<Config>;
+/**
+ * Resolve the configured server address at tool-execution time.
+ * @param value - the tool override or current settings value.
+ * @returns the normalized non-empty GeoServer base URL.
+ */
+export declare function resolveBaseUrl(value: string | undefined): string;
+/**
+ * Resolve the target workspace at publication time.
+ * @param requested - optional workspace supplied by the tool call.
+ * @param configured - default workspace from plugin settings.
+ * @returns the non-empty workspace name.
+ */
+export declare function resolvePublishWorkspace(requested: string | undefined, configured: string): string;
 /** Settings namespace carrying the configured server, username, and password. */
 export declare const GEOSERVER_SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
 /** Merge direct config credentials with environment-provided ones. */
@@ -168,7 +195,7 @@ export declare function fetchMapImage(baseUrl: string, params: GetMapParams, cre
     mime: string;
 }>;
 /**
- * Register the three geoserver tools plus the image route.
+ * Register the GeoServer tools plus the image and settings routes.
  * @param ctx - registrant context carrying the tool registry.
  * @param config - plugin configuration.
  */
