@@ -72,4 +72,4 @@ pnpm test         # node --test against lib/
 - The GetCapabilities fallback parses layer names/titles/styles only; CRS and bounds come from the REST path.
 - Images are cached in host memory; very large raster requests are bounded by the tool's width/height clamp (4096 px) and HTTP timeout.
 - WFS/WMTS service listing is not yet exposed; the REST enumeration covers WMS layers and styles.
-- The settings card requires the host to expose the `geoserver` settings namespace to the web configuration client; until the upstream `settings.register()` exposure mechanism lands, that is an explicit entry in the api-proxy allowlist.
+- The settings card reads and writes through the plugin's own `/geoserver/config` route, so it renders on any host without the `geoserver` settings namespace being allowlisted in the api-proxy. The password always travels through the credentials domain, never through a response.

@@ -11,8 +11,10 @@
  *  - `geoserver_probe`: connectivity/authentication diagnostics.
  *
  * A settings card in the web GUI (Settings → Plugins → Plugin configuration)
- * edits the `geoserver` settings namespace this plugin registers; tools read
- * the resolved section per call, so a saved change takes effect immediately.
+ * reads and writes its fields through this plugin's `/geoserver/config` route
+ * (registered on `ctx.webServer` below); the route persists into the
+ * `geoserver` settings namespace, so a saved change takes effect immediately
+ * and needs no settings-RPC allowlist on any host.
  *
  * The `/geoserver-image/<token>` route is registered on `ctx.webServer` when
  * the web surface is composed; tokens are random UUIDs bound to a short TTL

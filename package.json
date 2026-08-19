@@ -1,6 +1,6 @@
 {
   "name": "dsh-geoserver",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Read GeoServer WMS services and render map images in the dsh web GUI, with a configuration card in the settings page.",
   "keywords": [

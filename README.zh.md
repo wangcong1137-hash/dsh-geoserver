@@ -72,4 +72,4 @@ pnpm test         # node --test 针对 lib/
 - GetCapabilities 回退路径只解析图层名/标题/样式；CRS 与边界来自 REST 路径。
 - 图片缓存在宿主内存；超大栅格请求受工具宽高上限（4096 像素）与 HTTP 超时约束。
 - 暂未提供 WFS/WMTS 服务列表；REST 枚举覆盖 WMS 图层与样式。
-- 设置卡片要求宿主把 `geoserver` 设置命名空间暴露给 Web 配置客户端；在上游 `settings.register()` 暴露机制落地前，这需要在 api-proxy 白名单中显式登记。
+- 设置卡片通过插件自有的 `/geoserver/config` 路由读写，任何宿主版本都能渲染，无需把 `geoserver` 设置命名空间加入 api-proxy 白名单。密码始终走凭据域，从不经响应回传。
