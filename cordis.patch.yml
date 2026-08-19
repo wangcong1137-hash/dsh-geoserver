@@ -1,0 +1,4 @@
+# dsh-geoserver bundle patch — inserts the plugin row.
+- insert:
+    - id: geoserver
+      name: 'dsh-geoserver'

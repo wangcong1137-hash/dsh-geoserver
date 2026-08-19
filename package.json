@@ -1,0 +1,87 @@
+{
+  "name": "dsh-geoserver",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Read GeoServer WMS services and render map images in the dsh web GUI, with a configuration card in the settings page.",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "geoserver",
+    "wms",
+    "gis",
+    "map"
+  ],
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "cordis.patch.yml",
+    "tsdown.config.ts",
+    "tsconfig.json",
+    "tsconfig.client.json",
+    "LICENSE",
+    "README.md",
+    "README.zh.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.client.json --noEmit && tsdown",
+    "build:host": "tsc -p tsconfig.json",
+    "build:client": "tsc -p tsconfig.client.json --noEmit && tsdown",
+    "test": "node --test tests/",
+    "prepublishOnly": "pnpm test && pnpm build"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-settings": "*",
+    "@deepseek-ai/dsh-tools": "*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@types/node": "*",
+    "lightningcss": "^1.32.0",
+    "tsdown": "^0.22.0",
+    "typescript": "^5.6.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wangcong1137-hash/dsh-geoserver.git"
+  },
+  "homepage": "https://github.com/wangcong1137-hash/dsh-geoserver#readme",
+  "bugs": {
+    "url": "https://github.com/wangcong1137-hash/dsh-geoserver/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
