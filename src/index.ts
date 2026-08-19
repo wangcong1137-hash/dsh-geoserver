@@ -27,6 +27,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
@@ -112,6 +114,35 @@ export function resolveCredentials(config: Config): ResolvedCredentials {
     else if (password === undefined && /pass|pwd|token/i.test(key)) password = value
   }
   return { ...(username !== undefined ? { username } : {}), ...(password !== undefined ? { password } : {}) }
+}
+
+/** Credential references the settings card writes the password through. */
+export const GEOSERVER_PASS_REF = 'GEOSERVER_PASS'
+export const GEOSERVER_USER_REF = 'GEOSERVER_USER'
+
+/**
+ * Resolve the Basic-auth credentials for one call: direct config fields, then
+ * environment variables, then the credentials domain the settings card writes
+ * the password into. A value found earlier wins; a field with no value
+ * anywhere stays absent, so `authHeaders` simply omits the header.
+ * @param config - the resolved settings section.
+ * @param store - the credentials provider, or undefined when none is mounted.
+ * @returns the merged credentials.
+ */
+export async function resolveRuntimeCredentials(
+  config: Config,
+  store: CredentialProvider | undefined,
+): Promise<ResolvedCredentials> {
+  const direct = resolveCredentials(config)
+  if (store === undefined) return direct
+  const [password, username] = await Promise.all([
+    direct.password === undefined ? store.resolve(credentialRef(GEOSERVER_PASS_REF)) : undefined,
+    direct.username === undefined ? store.resolve(credentialRef(GEOSERVER_USER_REF)) : undefined,
+  ])
+  return {
+    ...(direct.username !== undefined ? { username: direct.username } : username === undefined ? {} : { username: username.value }),
+    ...(direct.password !== undefined ? { password: direct.password } : password === undefined ? {} : { password: password.value }),
+  }
 }
 
 interface ImageCacheEntry {
@@ -561,7 +592,11 @@ export function apply(ctx: Context, config: Config): void {
     onChange: () => {},
   })
 
-  const credentials = () => resolveCredentials(current())
+  // Basic auth for one call: config/env first, then the credentials domain the
+  // settings card writes the password into. The provider is optional — a
+  // deployment without a credential provider degrades to config/env.
+  const credentialStore = ctx.get('credentials') as CredentialProvider | undefined
+  const credentials = () => resolveRuntimeCredentials(current(), credentialStore)
   const cacheTtlMs = config.cacheTtlMs ?? 10 * 60 * 1000
   const cacheMaxEntries = config.cacheMaxEntries ?? 50
   const timeoutMs = config.connectTimeoutMs ?? 15_000
@@ -617,7 +652,7 @@ export function apply(ctx: Context, config: Config): void {
         void (async () => {
           if (req.method === 'GET') {
             const resolved = current()
-            sendJson(res, 200, { baseUrl: resolved.baseUrl, username: resolveCredentials(resolved).username ?? '' })
+            sendJson(res, 200, { baseUrl: resolved.baseUrl, username: (await credentials()).username ?? '' })
             return
           }
           if (req.method !== 'POST') {
@@ -695,13 +730,13 @@ export function apply(ctx: Context, config: Config): void {
       const baseUrl = normalizeBaseUrl(args.baseUrl ?? current().baseUrl)
       const skipDetails = args.skipDetails === true
       try {
-        const result = await listServices(baseUrl, credentials(), exec.signal, timeoutMs, skipDetails)
+        const result = await listServices(baseUrl, await credentials(), exec.signal, timeoutMs, skipDetails)
         return { baseUrl, ...mutableListResult(result) }
       } catch (error) {
         // REST is GeoServer-specific; fall back to the OGC-standard document
         // before giving up, so any WMS-compatible server still works.
         try {
-          const result = await listServicesFromCapabilities(baseUrl, credentials(), exec.signal, timeoutMs)
+          const result = await listServicesFromCapabilities(baseUrl, await credentials(), exec.signal, timeoutMs)
           return { baseUrl, ...mutableListResult(result) }
         } catch {
           throw error instanceof Error ? error : new Error(String(error))
@@ -761,7 +796,7 @@ export function apply(ctx: Context, config: Config): void {
           ? (args.bbox as [number, number, number, number])
           : undefined
       if (bbox === undefined) {
-        const resolved = await resolveLayerBounds(baseUrl, layer, credentials(), exec.signal, timeoutMs)
+        const resolved = await resolveLayerBounds(baseUrl, layer, await credentials(), exec.signal, timeoutMs)
         if (resolved === undefined) {
           throw new Error(
             `no bounding box available for layer ${layer} — pass bbox [minx, miny, maxx, maxy] explicitly`,
@@ -782,7 +817,7 @@ export function apply(ctx: Context, config: Config): void {
       return await fetchMapImage(
         baseUrl,
         params,
-        credentials(),
+        await credentials(),
         exec.signal,
         timeoutMs,
         cache,
@@ -807,7 +842,7 @@ export function apply(ctx: Context, config: Config): void {
     },
     async execute(args, exec) {
       const baseUrl = normalizeBaseUrl(args.baseUrl ?? current().baseUrl)
-      const probe = await probeServer(baseUrl, credentials(), exec.signal, timeoutMs, args.layer)
+      const probe = await probeServer(baseUrl, await credentials(), exec.signal, timeoutMs, args.layer)
       return probe
     },
   }))

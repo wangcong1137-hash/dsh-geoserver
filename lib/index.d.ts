@@ -23,6 +23,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
+import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
 import type { GetMapParams, WmsLayerInfo, WmsServiceInfo, WmsStyleInfo } from './geoserver.ts';
 export declare const name = "geoserver";
 export declare const inject: string[];
@@ -71,6 +72,19 @@ export declare const Config: z<Config>;
 export declare const GEOSERVER_SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
 /** Merge direct config credentials with environment-provided ones. */
 export declare function resolveCredentials(config: Config): ResolvedCredentials;
+/** Credential references the settings card writes the password through. */
+export declare const GEOSERVER_PASS_REF = "GEOSERVER_PASS";
+export declare const GEOSERVER_USER_REF = "GEOSERVER_USER";
+/**
+ * Resolve the Basic-auth credentials for one call: direct config fields, then
+ * environment variables, then the credentials domain the settings card writes
+ * the password into. A value found earlier wins; a field with no value
+ * anywhere stays absent, so `authHeaders` simply omits the header.
+ * @param config - the resolved settings section.
+ * @param store - the credentials provider, or undefined when none is mounted.
+ * @returns the merged credentials.
+ */
+export declare function resolveRuntimeCredentials(config: Config, store: CredentialProvider | undefined): Promise<ResolvedCredentials>;
 interface ImageCacheEntry {
     bytes: Buffer;
     mime: string;
