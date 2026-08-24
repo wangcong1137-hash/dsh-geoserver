@@ -15,8 +15,7 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true,
-    "types": ["node"],
-    "typeRoots": ["/Users/wangcong/Desktop/work/code/tools/deepseekHarness/node_modules/@types"]
+    "types": ["node"]
   },
   "include": ["src"],
   "exclude": ["src/client"]

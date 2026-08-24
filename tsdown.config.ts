@@ -83,7 +83,8 @@ const config: UserConfig = {
         minify: true,
       })
       const classMap: Record<string, string> = {}
-      for (const [local, exp] of Object.entries(cssExports ?? {})) classMap[local] = exp.name
+      const sortedExports = Object.entries(cssExports ?? {}).sort(([left], [right]) => left.localeCompare(right))
+      for (const [local, exp] of sortedExports) classMap[local] = exp.name
       const tagId = `${ID}/${fileId.split(sep).slice(-2).join('/')}`
       return [
         `const css = ${JSON.stringify(code.toString())};`,

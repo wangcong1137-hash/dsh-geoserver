@@ -1,6 +1,6 @@
 {
   "name": "dsh-geoserver",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "description": "Read GeoServer WMS services and render map images in the dsh web GUI, with a configuration card in the settings page.",
   "keywords": [
@@ -43,7 +43,7 @@
     "build:client": "tsc -p tsconfig.client.json --noEmit && tsdown",
     "webhook:receiver": "node examples/webhook-receiver.mjs",
     "test": "node --test \"tests/*.test.mjs\"",
-    "prepublishOnly": "node --test \"tests/*.test.mjs\""
+    "prepack": "npm run build && npm test"
   },
   "dsh": {
     "bundle": {
@@ -54,25 +54,51 @@
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-settings"
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins",
+        "@deepseek-ai/dsh-client-ui-slots"
       ],
       "platform": "web"
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "*"
-  },
-  "dependencies": {
-    "@deepseek-ai/dsh-settings": "*",
-    "@deepseek-ai/dsh-tools": "*",
-    "@deepseek-ai/dsh-credentials": "*"
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-connection": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-client-locale": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-client-ui-primitives": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-client-ui-settings": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-credentials": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-llm": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-settings": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.1.1 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "react": "^18.2.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "*",
-    "@types/node": "*",
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-connection": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-locale": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-runtime": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-credentials": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-llm": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-settings": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-tools": "0.1.1-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@types/node": "^22.0.0",
+    "@types/react": "~18.3.1",
+    "clsx": "^2.1.1",
     "lightningcss": "^1.32.0",
+    "react": "^18.2.0",
     "tsdown": "^0.22.0",
-    "typescript": "^5.6.0"
+    "typescript": ">=5.6.0 <7"
   },
   "license": "MIT",
   "repository": {
