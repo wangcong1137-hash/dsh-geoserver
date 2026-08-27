@@ -1,8 +1,8 @@
 /**
  * The `settings.plugin.item` slot type — one plugin's card inside the plugin
- * configuration section. Options: `id` (card key), `order` (card position).
- * A card draws its own internals; the section only stacks them and reports
- * how many there are.
+ * configuration section. The keyed contribution uses `key` to pair the card
+ * with the Host settings namespace. A card draws its own internals; the
+ * section only stacks them and reports how many there are.
  *
  * This client half registers its card into the slot the ui-settings-plugins
  * section declares at runtime; the type merges into the shared SlotMap.

@@ -96,7 +96,7 @@ export declare function resolveBaseUrl(value: string | undefined): string;
  */
 export declare function resolvePublishWorkspace(requested: string | undefined, configured: string): string;
 /** Settings namespace carrying the configured server, username, and password. */
-export declare const GEOSERVER_SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
+export declare const GEOSERVER_SETTINGS_NAMESPACE: Branded<"SettingsNamespace">;
 /** Merge direct config credentials with environment-provided ones. */
 export declare function resolveCredentials(config: Config): ResolvedCredentials;
 /** Credential references the settings card writes the password through. */

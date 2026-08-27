@@ -66,8 +66,7 @@ export function apply(ctx: ClientContext): void {
   settingsCtx.inject(['settingsScope'], (scoped) => {
     scoped.slots.inject('settings.plugin.item', () => scoped.slots.register({
       name: 'settings.plugin.item',
-      id: GEOSERVER_NS,
-      order: 30,
+      key: GEOSERVER_NS,
       locale: NS,
       inject: () => card.inject(),
     }, GeoserverCard))
